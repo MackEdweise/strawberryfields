@@ -129,8 +129,8 @@ class CircuitDrawerTests(BaseTest):
             Zgate(1) | (q[0])
             CXgate(1) | (q[0], q[1])
             CZgate(1) | (q[0], q[1])
-            BSgate(1) | (q[0], q[1])
-            S2gate(1) | (q[0], q[1])
+            BSgate(0, 1) | (q[0], q[1])
+            S2gate(0, 1) | (q[0], q[1])
             CKgate(1) | (q[0], q[1])
             Kgate(1) | (q[0])
             Vgate(1) | (q[0])
@@ -147,13 +147,23 @@ class CircuitDrawerTests(BaseTest):
     def test_add_column(self):
         self.drawer._add_column()
         for wire in self.drawer._circuit_matrix:
-            self.assertTrue(wire[-1] == QUANTUM_WIRE.format(1))
+            self.assertTrue(wire[-1] == QUANTUM_WIRE)
 
     def test_on_empty_column(self):
         self.logTestName()
 
         self.drawer._add_column()
         self.assertTrue(self.drawer._on_empty_column())
+
+    def test_fourier(self):
+        self.logTestName()
+        q = self.eng.register
+
+        with self.eng:
+            Fourier | (q[0])
+
+        result = self.eng.draw_circuit(print_queued_ops=True)[1]
+        self.assertTrue(result == fourier_output, failure_message(result, fourier_output))
 
     def test_x_0(self):
         self.logTestName()
@@ -264,7 +274,7 @@ class CircuitDrawerTests(BaseTest):
         q = self.eng.register
 
         with self.eng:
-            BSgate(1) | (q[0], q[1])
+            BSgate(0, 1) | (q[0], q[1])
 
         result = self.eng.draw_circuit(print_queued_ops=True)[1]
         self.assertTrue(result == bs_test_output, failure_message(result, bs_test_output))
@@ -408,6 +418,16 @@ class CircuitDrawerTests(BaseTest):
 
         result = self.eng.draw_circuit(print_queued_ops=True)[1]
         self.assertTrue(result == d_test_1_output, failure_message(result, d_test_1_output))
+
+    def test_not_drawable(self):
+        self.logTestName()
+        q = self.eng.register
+
+        with self.eng:
+            BSgate(0, 2) | (q[0], q[2])
+
+        with self.assertRaises(Exception):
+            self.eng.draw_circuit(print_queued_ops=True)
 
     def test_compile(self):
         self.logTestName()

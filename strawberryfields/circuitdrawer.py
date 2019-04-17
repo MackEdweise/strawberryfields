@@ -86,12 +86,21 @@ import datetime
 import os
 from .qcircuit_strings import QUANTUM_WIRE, PAULI_X_COMP, PAULI_Z_COMP, CONTROL, \
     TARGET, COLUMN_SPACING, ROW_SPACING, DOCUMENT_END, WIRE_OPERATION, WIRE_TERMINATOR, CIRCUIT_BODY_TERMINATOR, \
-    CIRCUIT_BODY_START, INIT_DOCUMENT, PIPE, D_COMP, R_COMP, P_COMP, V_COMP, FOURIER_COMP, BS_COMP, S_COMP, \
-    K_COMP
+    CIRCUIT_BODY_START, INIT_DOCUMENT, PIPE, D_COMP, R_COMP, P_COMP, V_COMP, FOURIER_COMP, BS_MULTI_COMP, \
+    S_MULTI_COMP, K_COMP, MULTIGATE, GHOST, S_COMP
+
+
+class NotDrawableException(Exception):
+    """Exception raised when a circuit is not drawable.
+
+    This class corresponds to the exception raised by :meth:`~.parse_op`
+    when a circuit is deemed impossible to effectively render using qcircuit.
+    """
+    pass
 
 
 class ModeMismatchException(Exception):
-    """Exception raised when parsing a Gate object
+    """Exception raised when parsing a Gate object.
 
     This class corresponds to the exception raised by :meth:`~.parse_op`
     when an operator is interpreted as an n-mode gate but is applied to a number of modes != n.
@@ -132,7 +141,7 @@ class Circuit:
             'Pgate': self._p,
             'Vgate': self._v,
             'Kgate': self._k,
-            'FourierGate': self._fourier
+            'Fourier': self._fourier
         }
 
         self.two_mode_gates = {
@@ -186,9 +195,9 @@ class Circuit:
 
         if method is None:
             raise UnsupportedGateException('Unsupported operation {0} not printable by circuit builder!'.format(str(op)))
-        elif mode == len(wires):
+        if mode == len(wires):
             method(*wires)
-        elif mode != len(wires):
+        else:
             raise ModeMismatchException('{0} mode gate applied to {1} wires!'.format(mode, len(wires)))
 
     def _x(self, wire):
@@ -297,7 +306,7 @@ class Circuit:
             first_wire (int): the first subsystem wire to apply the operator to.
             second_wire (int): the second subsystem wire to apply the operator to.
         """
-        self._multi_mode_gate(BS_COMP, [first_wire, second_wire])
+        self._multi_mode_gate(BS_MULTI_COMP, [first_wire, second_wire])
 
     def _s2(self, first_wire, second_wire):
         """Adds an two mode squeezing operator to the circuit.
@@ -306,7 +315,7 @@ class Circuit:
             first_wire (int): the first subsystem wire to apply the operator to.
             second_wire (int): the second subsystem wire to apply the operator to.
         """
-        self._multi_mode_gate(S_COMP, [first_wire, second_wire])
+        self._multi_mode_gate(S_MULTI_COMP, [first_wire, second_wire])
 
     # operation types
 
@@ -330,21 +339,34 @@ class Circuit:
                 post_wire.append(QUANTUM_WIRE.format(1))
 
     def _multi_mode_gate(self, circuit_op, wires):
-        """Adds multiple of the same single-mode operator to the circuit.
+        """Adds a multi-mode operator to the circuit.
 
         Args:
             circuit_op (str): the latex code for the operator.
             wires (list[int]): a list of the indeces of subsystem wires to apply the gate to.
+        Raises:
+            ModeMismatchException: if the operator is applied to non-adjacent wires.
         """
         matrix = self._circuit_matrix
 
         if not self._on_empty_column():
             self._add_column()
 
+        wires.sort()
+
+        first_wire = wires.pop(0)
+        wire_ops = matrix[first_wire]
+        wire_ops[-1] = MULTIGATE.format(1, circuit_op)
+        matrix[first_wire] = wire_ops
+        previous_wire = first_wire
+
         for wire in wires:
+            if not previous_wire == wire - 1:
+                raise NotDrawableException('{0} multi-mode gate applied to non-adjacent wires!'.format(circuit_op))
             wire_ops = matrix[wire]
-            wire_ops[-1] = circuit_op
+            wire_ops[-1] = GHOST.format(circuit_op)
             matrix[wire] = wire_ops
+            previous_wire = wire
 
         self._circuit_matrix = matrix
 
@@ -450,6 +472,8 @@ class Circuit:
         self._init_document()
         self._apply_spacing()
         self._begin_circuit()
+
+        self._add_column()
 
         for wire_ops in enumerate(self._circuit_matrix):
             for wire_op in wire_ops[1]:
